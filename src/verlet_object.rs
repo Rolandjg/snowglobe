@@ -15,6 +15,7 @@ pub struct Solver {
     pub gravity: Vec2<f32>,
     pub width: i32,
     pub height: i32,
+    pub substeps: i32,
 }
 
 fn hue_to_rgb(hue: f32) -> (u8, u8, u8) {
@@ -67,11 +68,12 @@ impl VerletObject {
 }
 
 impl Solver {
-    pub fn new(gravity: Vec2<f32>, width: i32, height: i32) -> Self {
+    pub fn new(gravity: Vec2<f32>, width: i32, height: i32, substeps: i32) -> Self {
         Self {
             gravity,
             width,
             height,
+            substeps,
         }
     }
 
@@ -243,11 +245,9 @@ impl Solver {
     }
 
     pub fn update(&mut self, particles: &mut Vec<VerletObject>, dt: f32, density: u32) {
-        let substeps = 8;
-
-        for _ in 0..substeps {
+        for _ in 0..self.substeps {
             self.apply_gravity(particles);
-            self.update_positions(particles, dt / (substeps as f32));
+            self.update_positions(particles, dt / (self.substeps as f32));
             self.find_colllisions(particles, density);
             self.apply_constraint(particles);
         }

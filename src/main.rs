@@ -19,6 +19,7 @@ fn main() {
     let mut particle_size = 10.0;
     let mut movement_dampening = 10.0;
     let mut total = 1500;
+    let mut substeps = 8;
 
     if args.len() >= 2 {
         particle_size = args[1]
@@ -36,12 +37,17 @@ fn main() {
             .parse::<f32>()
             .expect("Provide a valid int for total particles") as i32;
     }
+    if args.len() >= 5 {
+        substeps = args[4]
+            .parse::<f32>()
+            .expect("Provide a valid int for simulation substeps") as i32;
+    }
 
     let mut frame_number = 0;
     let mut window_pos = unsafe { ffi::GetWindowPosition() };
 
     let mut particles: Vec<VerletObject> = Vec::new();
-    let mut solver = Solver::new(Vec2::new(0.0, 1000.0), WIDTH, HEIGHT);
+    let mut solver = Solver::new(Vec2::new(0.0, 1000.0), WIDTH, HEIGHT, substeps);
 
     while !rl.window_should_close() {
         let new_window_pos = unsafe { ffi::GetWindowPosition() };
@@ -61,12 +67,6 @@ fn main() {
         solver.width = rl.get_screen_width();
         solver.height = rl.get_screen_height();
 
-        let color = (
-            (frame_number / 5 % 100) as u8,
-            (frame_number / 5 % 155) as u8,
-            255,
-        );
-
         if frame_number % 5 == 0 && particles.len() <= total as usize {
             for i in 0..6 {
                 let pos = (25 + i * 20) as f32;
@@ -75,7 +75,7 @@ fn main() {
                     Vec2::new(pos - 1.0, 15.0),
                     Vec2::new(0.0, 0.0),
                     particle_size,
-                    color,
+                    (255, 255, 255),
                 ));
             }
         }
