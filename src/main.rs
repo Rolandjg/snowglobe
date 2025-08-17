@@ -16,12 +16,25 @@ fn main() {
         .build();
 
     let args: Vec<String> = env::args().collect();
-    let particle_size = 10.0;
-    if args.len() == 2 {
-        let particle_size = args[1]
+    let mut particle_size = 10.0;
+    let mut movement_dampening = 10.0;
+    let mut total = 1500;
+
+    if args.len() >= 2 {
+        particle_size = args[1]
             .parse::<f32>()
             .expect("Provide a valid int for particle size") as f32;
-        println!("{}", particle_size);
+    }
+    if args.len() >= 3 {
+        movement_dampening = args[2]
+            .parse::<f32>()
+            .expect("Provide a valid int for window velocity dampening")
+            as f32;
+    }
+    if args.len() >= 4 {
+        total = args[3]
+            .parse::<f32>()
+            .expect("Provide a valid int for total particles") as i32;
     }
 
     let mut frame_number = 0;
@@ -39,7 +52,7 @@ fn main() {
 
             let force_vector = old - new;
             let n = force_vector / force_vector.magnitude();
-            solver.apply_arbituary_force(&mut particles, n / 10.0);
+            solver.apply_arbituary_force(&mut particles, n / movement_dampening);
             window_pos = new_window_pos;
         }
 
@@ -54,7 +67,7 @@ fn main() {
             255,
         );
 
-        if frame_number % 5 == 0 && particles.len() <= 1500 {
+        if frame_number % 5 == 0 && particles.len() <= total as usize {
             for i in 0..6 {
                 let pos = (25 + i * 20) as f32;
                 particles.push(VerletObject::new(
