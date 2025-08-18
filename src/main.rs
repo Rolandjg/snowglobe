@@ -20,6 +20,7 @@ fn main() {
     let mut movement_dampening = 10.0;
     let mut total = 1500;
     let mut substeps = 8;
+    let mut gravity = 1000.0;
 
     if args.len() >= 2 {
         particle_size = args[1]
@@ -42,12 +43,17 @@ fn main() {
             .parse::<f32>()
             .expect("Provide a valid int for simulation substeps") as i32;
     }
+    if args.len() >= 6 {
+        gravity = args[5]
+            .parse::<f32>()
+            .expect("Provide a valid float for gravity");
+    }
 
     let mut frame_number = 0;
     let mut window_pos = unsafe { ffi::GetWindowPosition() };
 
     let mut particles: Vec<VerletObject> = Vec::new();
-    let mut solver = Solver::new(Vec2::new(0.0, 1000.0), WIDTH, HEIGHT, substeps);
+    let mut solver = Solver::new(Vec2::new(0.0, gravity), WIDTH, HEIGHT, substeps);
 
     while !rl.window_should_close() {
         let new_window_pos = unsafe { ffi::GetWindowPosition() };
@@ -84,7 +90,7 @@ fn main() {
         solver.update(
             &mut particles,
             1.0 / rl.get_fps() as f32,
-            (particle_size.powf(1.5) + 1.0) as u32,
+            (particle_size.powf(1.5) + 1.4) as u32,
         );
 
         let mut d = rl.begin_drawing(&thread);
