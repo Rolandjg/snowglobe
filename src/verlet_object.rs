@@ -87,6 +87,24 @@ impl Solver {
         });
     }
 
+    pub fn apply_point_arbituary_force(
+        &mut self,
+        particles: &mut Vec<VerletObject>,
+        position: Vec2<f32>,
+        fall_off: f32
+    ) {
+        particles.par_iter_mut().for_each(|p| {
+            let dist = p.position_current - position;
+            if dist.magnitude() < fall_off.abs() {
+                if fall_off > 0.0 {
+                    p.position_current += dist / dist.magnitude(); 
+                } else {
+                    p.position_current -= dist / dist.magnitude(); 
+                }
+            }
+        });
+    }
+
     fn apply_gravity(&mut self, particles: &mut Vec<VerletObject>) {
         particles.par_iter_mut().for_each(|p| {
             p.accelerate(self.gravity);

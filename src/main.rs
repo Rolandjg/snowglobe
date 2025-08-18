@@ -49,6 +49,7 @@ fn main() {
             .expect("Provide a valid float for gravity");
     }
 
+
     let mut frame_number = 0;
     let mut window_pos = unsafe { ffi::GetWindowPosition() };
 
@@ -66,6 +67,14 @@ fn main() {
             let n = force_vector / force_vector.magnitude();
             solver.apply_arbituary_force(&mut particles, n / movement_dampening);
             window_pos = new_window_pos;
+        }
+
+        if rl.is_mouse_button_down(raylib::consts::MouseButton::MOUSE_BUTTON_LEFT) {
+            solver.apply_point_arbituary_force(&mut particles, Vec2::new(rl.get_mouse_x() as f32, rl.get_mouse_y() as f32), -200.0);
+        }
+
+        if rl.is_mouse_button_down(raylib::consts::MouseButton::MOUSE_BUTTON_RIGHT) {
+            solver.apply_point_arbituary_force(&mut particles, Vec2::new(rl.get_mouse_x() as f32, rl.get_mouse_y() as f32), 200.0);
         }
 
         frame_number += 1;
