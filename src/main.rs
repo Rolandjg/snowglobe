@@ -21,6 +21,7 @@ fn main() {
     let mut total = 1500;
     let mut substeps = 8;
     let mut gravity = 1000.0;
+    let mut fall_off = 100.0;
 
     if args.len() >= 2 {
         particle_size = args[1]
@@ -49,7 +50,6 @@ fn main() {
             .expect("Provide a valid float for gravity");
     }
 
-
     let mut frame_number = 0;
     let mut window_pos = unsafe { ffi::GetWindowPosition() };
 
@@ -58,6 +58,8 @@ fn main() {
 
     while !rl.window_should_close() {
         let new_window_pos = unsafe { ffi::GetWindowPosition() };
+        let mouse_x = rl.get_mouse_x();
+        let mouse_y = rl.get_mouse_y();
 
         if window_pos.x != new_window_pos.x || window_pos.y != new_window_pos.y {
             let old = Vec2::new(window_pos.x, window_pos.y);
@@ -70,13 +72,15 @@ fn main() {
         }
 
         if rl.is_mouse_button_down(raylib::consts::MouseButton::MOUSE_BUTTON_LEFT) {
-            solver.apply_point_arbituary_force(&mut particles, Vec2::new(rl.get_mouse_x() as f32, rl.get_mouse_y() as f32), -200.0);
+            solver.apply_point_arbituary_force(
+                &mut particles,
+                Vec2::new(mouse_x as f32, mouse_y as f32),
+                fall_off,
+            );
         }
 
-        if rl.is_mouse_button_down(raylib::consts::MouseButton::MOUSE_BUTTON_RIGHT) {
-            solver.apply_point_arbituary_force(&mut particles, Vec2::new(rl.get_mouse_x() as f32, rl.get_mouse_y() as f32), 200.0);
-        }
-
+        let scroll = rl.get_mouse_wheel_move();
+        fall_off += 5.0 * scroll;
         frame_number += 1;
 
         solver.width = rl.get_screen_width();
@@ -112,6 +116,19 @@ fn main() {
                 p.position_current.y as i32,
                 p.radius,
                 Color::new(col.0, col.1, col.2, 255),
+            );
+        }
+
+        if scroll != 0.0 {
+            d.draw_circle_lines(
+                mouse_x,
+                mouse_y,
+                fall_off,
+                if fall_off > 0.0 {
+                    Color::GREEN
+                } else {
+                    Color::RED
+                },
             );
         }
     }
