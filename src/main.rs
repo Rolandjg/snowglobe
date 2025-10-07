@@ -15,6 +15,7 @@ fn main() {
         .resizable()
         .build();
 
+    let mut playing = true;
     let args: Vec<String> = env::args().collect();
     let mut particle_size = 10.0;
     let mut movement_dampening = 10.0;
@@ -106,11 +107,13 @@ fn main() {
         }
 
         rl.set_target_fps(60);
-        solver.update(
-            &mut particles,
-            1.0 / rl.get_fps() as f32,
-            (particle_size.powf(1.5) + 1.4) as u32,
-        );
+        if playing {
+            solver.update(
+                &mut particles,
+                1.0 / rl.get_fps() as f32,
+                (particle_size.powf(1.5) + 1.4) as u32,
+            );
+        }
 
         let mut d = rl.begin_drawing(&thread);
         d.clear_background(Color::BLACK);
@@ -136,6 +139,16 @@ fn main() {
                     Color::RED
                 },
             );
+        }
+
+        unsafe {
+            if raylib::ffi::IsKeyDown(KeyboardKey::KEY_P as i32) {
+                playing = true;
+            }
+
+            if raylib::ffi::IsKeyDown(KeyboardKey::KEY_S as i32) {
+                playing = false;
+            }
         }
     }
 }
