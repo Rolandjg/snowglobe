@@ -21,6 +21,7 @@ fn main() {
     let mut total = 1500;
     let mut substeps = 8;
     let mut gravity = 1000.0;
+    let mut cohesion = 0.1;
     let mut fall_off = 100.0;
 
     if args.len() >= 2 {
@@ -49,12 +50,17 @@ fn main() {
             .parse::<f32>()
             .expect("Provide a valid float for gravity");
     }
+    if args.len() >= 7 {
+        cohesion = args[6]
+            .parse::<f32>()
+            .expect("Provide a valid float for cohesion multiplier");
+    }
 
     let mut frame_number = 0;
     let mut window_pos = unsafe { ffi::GetWindowPosition() };
 
     let mut particles: Vec<VerletObject> = Vec::new();
-    let mut solver = Solver::new(Vec2::new(0.0, gravity), WIDTH, HEIGHT, substeps);
+    let mut solver = Solver::new(Vec2::new(0.0, gravity), WIDTH, HEIGHT, substeps, cohesion);
 
     while !rl.window_should_close() {
         let new_window_pos = unsafe { ffi::GetWindowPosition() };
@@ -87,11 +93,11 @@ fn main() {
         solver.height = rl.get_screen_height();
 
         if frame_number % 5 == 0 && particles.len() <= total as usize {
-            for i in 0..6 {
+            for i in 0..20 {
                 let pos = (25 + i * 20) as f32;
                 particles.push(VerletObject::new(
-                    Vec2::new(pos, 16.0),
-                    Vec2::new(pos - 1.0, 15.0),
+                    Vec2::new(16.0, pos),
+                    Vec2::new(15.0, pos - 1.0),
                     Vec2::new(0.0, 0.0),
                     particle_size,
                     (255, 255, 255),

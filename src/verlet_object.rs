@@ -13,6 +13,7 @@ pub struct VerletObject {
 
 pub struct Solver {
     pub gravity: Vec2<f32>,
+    pub cohesion_multiplier: f32,
     pub width: i32,
     pub height: i32,
     pub substeps: i32,
@@ -68,12 +69,19 @@ impl VerletObject {
 }
 
 impl Solver {
-    pub fn new(gravity: Vec2<f32>, width: i32, height: i32, substeps: i32) -> Self {
+    pub fn new(
+        gravity: Vec2<f32>,
+        width: i32,
+        height: i32,
+        substeps: i32,
+        cohesion_multiplier: f32,
+    ) -> Self {
         Self {
             gravity,
             width,
             height,
             substeps,
+            cohesion_multiplier,
         }
     }
 
@@ -97,9 +105,9 @@ impl Solver {
             let dist = p.position_current - position;
             if dist.magnitude() < fall_off.abs() {
                 if fall_off > 0.0 {
-                    p.position_current += dist / dist.magnitude() / 2.0;
+                    p.position_current += dist / dist.magnitude();
                 } else {
-                    p.position_current -= dist / dist.magnitude() / 2.0;
+                    p.position_current -= dist / dist.magnitude();
                 }
             }
         });
@@ -180,8 +188,21 @@ impl Solver {
         }
     }
 
+    fn solve_cohesion(&mut self, a: &mut VerletObject, b: &mut VerletObject) {
+        let axis: Vec2<f32> = a.position_current - b.position_current;
+        let dist = axis.magnitude();
+        let e = self.cohesion_multiplier * 1e-4;
+
+        if dist > a.radius + b.radius {
+            let n: Vec2<f32> = axis / dist;
+            let delta = a.radius + b.radius - dist;
+            a.position_current += e * delta * n;
+            b.position_current -= e * delta * n;
+        }
+    }
+
     // fn hash_cell(&mut self, x: i32, y: i32) -> f32 {
-    //     ((x as f32 * 13.8913)/(y as f32 * 0.9381) * 1000000.0) % 255.0
+    //     ((x as f32 * 13.8913) / (y as f32 * 0.9381) * 1000000.0) % 255.0
     // }
 
     fn compute_spatial_map(
@@ -253,9 +274,11 @@ impl Solver {
                 };
                 if p1 < p2 {
                     let (a, b) = particles.split_at_mut(*p2 as usize);
+                    self.solve_cohesion(&mut a[*p1 as usize], &mut b[0]);
                     self.solve_collision(&mut a[*p1 as usize], &mut b[0]);
                 } else {
                     let (a, b) = particles.split_at_mut(*p1 as usize);
+                    self.solve_cohesion(&mut b[0], &mut a[*p2 as usize]);
                     self.solve_collision(&mut b[0], &mut a[*p2 as usize]);
                 }
             }
