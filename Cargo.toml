@@ -7,3 +7,4 @@ edition = "2021"
 raylib = { version = "5.5.0", features = [] }
 cgmath = "0.18.0"
 rayon = "1.5.1"
+clap = { version = "4.5.49", features = ["derive"] }

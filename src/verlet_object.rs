@@ -9,11 +9,13 @@ pub struct VerletObject {
     pub acceleration: Vec2<f32>,
     pub radius: f32,
     pub col: (u8, u8, u8),
+    pub rigid: bool,
 }
 
 pub struct Solver {
     pub gravity: Vec2<f32>,
     pub cohesion_multiplier: f32,
+    pub repulsion_multiplier: f32,
     pub width: i32,
     pub height: i32,
     pub substeps: i32,
@@ -41,6 +43,7 @@ impl VerletObject {
         acceleration: Vec2<f32>,
         radius: f32,
         col: (u8, u8, u8),
+        rigid: bool,
     ) -> Self {
         Self {
             position_current,
@@ -48,10 +51,14 @@ impl VerletObject {
             acceleration,
             radius,
             col,
+            rigid,
         }
     }
 
     pub fn update_position(&mut self, dt: f32) {
+        if self.rigid {
+            return;
+        }
         let velocity: Vec2<f32> = self.position_current - self.position_old;
         self.position_old = self.position_current;
         self.position_current = self.position_current + velocity + self.acceleration * dt * dt;
@@ -64,6 +71,9 @@ impl VerletObject {
     }
 
     pub fn accelerate(&mut self, acc: Vec2<f32>) {
+        if self.rigid {
+            return;
+        }
         self.acceleration += acc;
     }
 }
@@ -75,6 +85,7 @@ impl Solver {
         height: i32,
         substeps: i32,
         cohesion_multiplier: f32,
+        repulsion_multiplier: f32,
     ) -> Self {
         Self {
             gravity,
@@ -82,6 +93,7 @@ impl Solver {
             height,
             substeps,
             cohesion_multiplier,
+            repulsion_multiplier,
         }
     }
 
@@ -180,11 +192,15 @@ impl Solver {
         let axis: Vec2<f32> = a.position_current - b.position_current;
         let dist = axis.magnitude();
 
-        if dist < a.radius + b.radius {
+        if dist < a.radius + b.radius - self.repulsion_multiplier {
             let n: Vec2<f32> = axis / dist;
             let delta = a.radius + b.radius - dist;
-            a.position_current += 0.5 * delta * n;
-            b.position_current -= 0.5 * delta * n;
+            if !a.rigid {
+                a.position_current += 0.5 * delta * n;
+            }
+            if !b.rigid {
+                b.position_current -= 0.5 * delta * n;
+            }
         }
     }
 
@@ -196,8 +212,12 @@ impl Solver {
         if dist > a.radius + b.radius {
             let n: Vec2<f32> = axis / dist;
             let delta = a.radius + b.radius - dist;
-            a.position_current += e * delta * n;
-            b.position_current -= e * delta * n;
+            if !a.rigid {
+                a.position_current += e * delta * n
+            }
+            if !b.rigid {
+                b.position_current -= e * delta * n
+            }
         }
     }
 

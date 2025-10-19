@@ -2,13 +2,46 @@ mod verlet_object;
 
 use crate::verlet_object::*;
 use cgmath::{InnerSpace, Vector2 as Vec2};
+use clap::Parser;
 use raylib::prelude::*;
-use std::env;
+
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+struct Args {
+    /// Particle Size
+    #[arg(short, long, default_value_t = 10)]
+    particle_size: i32,
+
+    /// Motion dampening
+    #[arg(short, long, default_value_t = 10)]
+    motion_dampening: i32,
+
+    /// Total particles
+    #[arg(short, long, default_value_t = 1000)]
+    total: i32,
+
+    /// Simulation substeps
+    #[arg(short, long, default_value_t = 8)]
+    substeps: i32,
+
+    /// Simulation gravity
+    #[arg(short, long, default_value_t = 1000)]
+    gravity: i32,
+
+    /// Particle cohesion
+    #[arg(short, long, default_value_t = 0.0)]
+    cohesion: f32,
+
+    /// Particle repulsion
+    #[arg(short, long, default_value_t = 0.0)]
+    repulsion: f32,
+}
 
 const WIDTH: i32 = 800;
 const HEIGHT: i32 = 800;
 
 fn main() {
+    let args = Args::parse();
     let (mut rl, thread) = raylib::init()
         .size(WIDTH, HEIGHT)
         .title("Digital Snowglobe")
@@ -16,52 +49,41 @@ fn main() {
         .build();
 
     let mut playing = true;
-    let args: Vec<String> = env::args().collect();
-    let mut particle_size = 10.0;
-    let mut movement_dampening = 10.0;
-    let mut total = 1500;
-    let mut substeps = 8;
-    let mut gravity = 1000.0;
-    let mut cohesion = 0.1;
+    let particle_size = args.particle_size as f32;
+    let movement_dampening = args.motion_dampening as f32;
+    let total = args.total;
+    let substeps = args.substeps;
+    let gravity = args.gravity as f32;
+    let cohesion = args.cohesion;
+    let repulsion = args.repulsion;
     let mut fall_off = 100.0;
 
-    if args.len() >= 2 {
-        particle_size = args[1]
-            .parse::<f32>()
-            .expect("Provide a valid int for particle size") as f32;
-    }
-    if args.len() >= 3 {
-        movement_dampening = args[2]
-            .parse::<f32>()
-            .expect("Provide a valid int for window velocity dampening")
-            as f32;
-    }
-    if args.len() >= 4 {
-        total = args[3]
-            .parse::<f32>()
-            .expect("Provide a valid int for total particles") as i32;
-    }
-    if args.len() >= 5 {
-        substeps = args[4]
-            .parse::<f32>()
-            .expect("Provide a valid int for simulation substeps") as i32;
-    }
-    if args.len() >= 6 {
-        gravity = args[5]
-            .parse::<f32>()
-            .expect("Provide a valid float for gravity");
-    }
-    if args.len() >= 7 {
-        cohesion = args[6]
-            .parse::<f32>()
-            .expect("Provide a valid float for cohesion multiplier");
-    }
-
-    let mut frame_number = 0;
     let mut window_pos = unsafe { ffi::GetWindowPosition() };
 
     let mut particles: Vec<VerletObject> = Vec::new();
-    let mut solver = Solver::new(Vec2::new(0.0, gravity), WIDTH, HEIGHT, substeps, cohesion);
+    let mut solver = Solver::new(
+        Vec2::new(0.0, gravity),
+        WIDTH,
+        HEIGHT,
+        substeps,
+        cohesion,
+        repulsion,
+    );
+
+    for x in 0..((total as f32).sqrt() as i32) {
+        for y in 0..((total as f32).sqrt() as i32) {
+            let x_pos = (x * particle_size as i32) as f32 * 2.5;
+            let y_pos = (y * particle_size as i32) as f32 * 2.5;
+            particles.push(VerletObject::new(
+                Vec2::new(x_pos + particle_size, y_pos + particle_size),
+                Vec2::new(x_pos + particle_size, y_pos + particle_size),
+                Vec2::new(0.0, 0.0),
+                particle_size,
+                (255, 255, 255),
+                false,
+            ));
+        }
+    }
 
     while !rl.window_should_close() {
         let new_window_pos = unsafe { ffi::GetWindowPosition() };
@@ -78,6 +100,18 @@ fn main() {
             window_pos = new_window_pos;
         }
 
+        if rl.is_mouse_button_down(raylib::consts::MouseButton::MOUSE_BUTTON_RIGHT) {
+            for i in 0..(if fall_off < 0.0 { 10 } else { 1 }) {
+                particles.push(VerletObject::new(
+                    Vec2::new((mouse_x + i) as f32, (mouse_y + i) as f32),
+                    Vec2::new((mouse_x + i) as f32, (mouse_y + i) as f32),
+                    Vec2::new(0.0, 0.0),
+                    particle_size,
+                    (255, 255, 255),
+                    fall_off > 0.0,
+                ));
+            }
+        }
         if rl.is_mouse_button_down(raylib::consts::MouseButton::MOUSE_BUTTON_LEFT) {
             solver.apply_point_arbituary_force(
                 &mut particles,
@@ -88,29 +122,16 @@ fn main() {
 
         let scroll = rl.get_mouse_wheel_move();
         fall_off += 5.0 * scroll;
-        frame_number += 1;
 
         solver.width = rl.get_screen_width();
         solver.height = rl.get_screen_height();
 
-        if frame_number % 5 == 0 && particles.len() <= total as usize {
-            for i in 0..20 {
-                let pos = (25 + i * 20) as f32;
-                particles.push(VerletObject::new(
-                    Vec2::new(16.0, pos),
-                    Vec2::new(15.0, pos - 1.0),
-                    Vec2::new(0.0, 0.0),
-                    particle_size,
-                    (255, 255, 255),
-                ));
-            }
-        }
-
         rl.set_target_fps(60);
+        rl.set_trace_log(TraceLogLevel::LOG_NONE);
         if playing {
             solver.update(
                 &mut particles,
-                1.0 / rl.get_fps() as f32,
+                1.0 / 60.0 as f32,
                 (particle_size.powf(1.5) + 1.4) as u32,
             );
         }
@@ -128,18 +149,16 @@ fn main() {
             );
         }
 
-        if scroll != 0.0 {
-            d.draw_circle_lines(
-                mouse_x,
-                mouse_y,
-                fall_off,
-                if fall_off > 0.0 {
-                    Color::GREEN
-                } else {
-                    Color::RED
-                },
-            );
-        }
+        d.draw_circle_lines(
+            mouse_x,
+            mouse_y,
+            fall_off,
+            if fall_off > 0.0 {
+                Color::GREEN
+            } else {
+                Color::RED
+            },
+        );
 
         unsafe {
             if raylib::ffi::IsKeyDown(KeyboardKey::KEY_P as i32) {
