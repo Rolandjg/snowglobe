@@ -3,6 +3,7 @@ mod verlet_object;
 use crate::verlet_object::*;
 use cgmath::{InnerSpace, Vector2 as Vec2};
 use clap::Parser;
+use rand::Rng;
 use raylib::prelude::*;
 
 #[derive(Parser, Debug)]
@@ -35,6 +36,10 @@ struct Args {
     /// Particle repulsion
     #[arg(short, long, default_value_t = 0.0)]
     repulsion: f32,
+
+    /// Particle Size Variance
+    #[arg(short, long, default_value_t = 0)]
+    variance: i32,
 }
 
 const WIDTH: i32 = 800;
@@ -56,7 +61,10 @@ fn main() {
     let gravity = args.gravity as f32;
     let cohesion = args.cohesion;
     let repulsion = args.repulsion;
+    let size_variance = args.variance;
     let mut fall_off = 100.0;
+
+    let mut rng = rand::rng();
 
     let mut window_pos = unsafe { ffi::GetWindowPosition() };
 
@@ -78,7 +86,11 @@ fn main() {
                 Vec2::new(x_pos + particle_size, y_pos + particle_size),
                 Vec2::new(x_pos + particle_size, y_pos + particle_size),
                 Vec2::new(0.0, 0.0),
-                particle_size,
+                if size_variance != 0 {
+                    (particle_size + (rng.random_range(-size_variance..size_variance) as f32)).abs()
+                } else {
+                    particle_size
+                },
                 (255, 255, 255),
                 false,
             ));
@@ -106,7 +118,12 @@ fn main() {
                     Vec2::new((mouse_x + i) as f32, (mouse_y + i) as f32),
                     Vec2::new((mouse_x + i) as f32, (mouse_y + i) as f32),
                     Vec2::new(0.0, 0.0),
-                    particle_size,
+                    if size_variance != 0 && fall_off < 0.0 {
+                        (particle_size + (rng.random_range(-size_variance..size_variance) as f32))
+                            .abs()
+                    } else {
+                        particle_size
+                    },
                     (255, 255, 255),
                     fall_off > 0.0,
                 ));
