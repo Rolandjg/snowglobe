@@ -16,6 +16,14 @@ struct Args {
     #[arg(short, long, default_value_t = 10)]
     particle_size: i32,
 
+    /// Frames directory
+    #[arg(short, long, default_value_t = String::from("frames"))]
+    directory: String,
+
+    /// Total (max) particles
+    #[arg(short, long, default_value_t = 2000)]
+    total: i32,
+
     /// Motion dampening
     #[arg(short, long, default_value_t = 10)]
     motion_dampening: i32,
@@ -52,11 +60,13 @@ fn main() {
 
     let mut playing = true;
     let particle_size = args.particle_size as f32;
+    let total = args.total;
     let movement_dampening = args.motion_dampening as f32;
     let substeps = args.substeps;
     let cohesion = args.cohesion;
     let repulsion = args.repulsion;
     let size_variance = args.variance;
+    let direcory = args.directory;
 
     let mut rng = rand::rng();
     let mut frame_index = 0;
@@ -71,8 +81,9 @@ fn main() {
         cohesion,
         repulsion,
     );
+    solver.set_max_particles(total);
 
-    let mut paths: Vec<PathBuf> = fs::read_dir("frames")
+    let mut paths: Vec<PathBuf> = fs::read_dir(direcory)
         .unwrap()
         .filter_map(|e| e.ok().map(|e| e.path()))
         .collect();
@@ -116,7 +127,7 @@ fn main() {
     }
 
     rl.set_target_fps(30);
-    let music = audio.new_music("audio.wav").unwrap();
+    let music = audio.new_music("audio.wav").expect("Could not open music");
     music.play_stream();
 
     while !rl.window_should_close() {

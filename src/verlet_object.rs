@@ -22,6 +22,7 @@ pub struct Solver {
     pub width: i32,
     pub height: i32,
     pub substeps: i32,
+    total: Option<i32>,
 }
 
 struct Cell {
@@ -104,7 +105,12 @@ impl Solver {
             substeps,
             cohesion_multiplier,
             repulsion_multiplier,
+            total: None,
         }
+    }
+
+    pub fn set_max_particles(&mut self, max: i32) {
+        self.total = Some(max);
     }
 
     pub fn apply_arbituary_force(
@@ -138,7 +144,6 @@ impl Solver {
 
     fn manage_particles(&self, particles: &mut Vec<VerletObject>, white_count: i32) {
         let mut rng = rand::rng();
-        let max_particles = 4000;
 
         if white_count == 0 {
             return
@@ -152,7 +157,12 @@ impl Solver {
             particles.push(VerletObject::new(pos, pos, Vec2::new(0.0, 0.0), particles[0].radius, (0, 0, 0, 0), false));
         }
 
-        let x = cmp::min((white_count) / 100, max_particles);
+        let x;
+        let growth_limiter = (particles[0].radius.exp2() * 10.0) as i32; 
+        match self.total {
+            Some(v) => x = cmp::min((white_count) / growth_limiter, v),
+            None => x = cmp::min((white_count) / growth_limiter, 1000)
+        }
 
         if particles.len() > x as usize {
             while particles.len() > x as usize {
