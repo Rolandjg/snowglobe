@@ -1,6 +1,7 @@
 use cgmath::{InnerSpace, Vector2 as Vec2};
 use rayon::prelude::*;
 use std::collections::HashMap;
+use image::DynamicImage;
 
 #[derive(PartialEq)]
 pub struct VerletObject {
@@ -13,12 +14,16 @@ pub struct VerletObject {
 }
 
 pub struct Solver {
-    pub gravity: Vec2<f32>,
     pub cohesion_multiplier: f32,
     pub repulsion_multiplier: f32,
     pub width: i32,
     pub height: i32,
     pub substeps: i32,
+}
+
+struct Cell {
+    pub color: bool,
+    pub items: Vec<i32>,
 }
 
 fn hue_to_rgb(hue: f32) -> (u8, u8, u8) {
@@ -34,6 +39,12 @@ fn hue_to_rgb(hue: f32) -> (u8, u8, u8) {
         _ => (c, 0.0, x),
     };
     ((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8)
+}
+
+impl Cell {
+    pub fn new(color: bool, items: Vec<i32>) -> Self {
+        Self { color, items }
+    }
 }
 
 impl VerletObject {
@@ -69,18 +80,10 @@ impl VerletObject {
         self.acceleration.x = 0.0;
         self.acceleration.y = 0.0;
     }
-
-    pub fn accelerate(&mut self, acc: Vec2<f32>) {
-        if self.rigid {
-            return;
-        }
-        self.acceleration += acc;
-    }
 }
 
 impl Solver {
     pub fn new(
-        gravity: Vec2<f32>,
         width: i32,
         height: i32,
         substeps: i32,
@@ -88,7 +91,6 @@ impl Solver {
         repulsion_multiplier: f32,
     ) -> Self {
         Self {
-            gravity,
             width,
             height,
             substeps,
@@ -107,28 +109,63 @@ impl Solver {
         });
     }
 
-    pub fn apply_point_arbituary_force(
-        &mut self,
-        particles: &mut Vec<VerletObject>,
-        position: Vec2<f32>,
-        fall_off: f32,
+    pub fn move_to_white_pixel(
+        &mut self, 
+        particles: &mut Vec<VerletObject>, 
+        density: u32,
+        image: &DynamicImage,
     ) {
-        particles.par_iter_mut().for_each(|p| {
-            let dist = p.position_current - position;
-            if dist.magnitude() < fall_off.abs() {
-                if fall_off > 0.0 {
-                    p.position_current += dist / dist.magnitude();
-                } else {
-                    p.position_current -= dist / dist.magnitude();
+        let grid = self.compute_spatial_map(particles, density, image);
+
+        let rgb_image = image.to_rgb8();
+        let img_width = rgb_image.width() as i32;
+        let img_height = rgb_image.height() as i32;
+        let search_radius = (density * 3) as i32;
+        
+        for cell in grid.values() {
+            if cell.color {
+                continue; // Skip white cells
+            }
+            
+            for &idx in &cell.items {
+                let particle = &mut particles[idx as usize];
+                let px = particle.position_current.x as i32;
+                let py = particle.position_current.y as i32;
+                
+                let mut nearest_dist_sq = f32::INFINITY;
+                let mut target = particle.position_current;
+                
+                // Search for nearest white pixel
+                for dy in -search_radius..=search_radius {
+                    for dx in -search_radius..=search_radius {
+                        let x = px + dx;
+                        let y = py + dy;
+                        
+                        // FIXED: Use img_width-1 and img_height-1 as max bounds
+                        if x < 0 || x >= img_width || y < 0 || y >= img_height {
+                            continue;
+                        }
+                        
+                        let pixel = rgb_image.get_pixel(x as u32, y as u32).0;
+                        if pixel[0] >= 100 && pixel[1] >= 100 && pixel[2] >= 100 {
+                            let dist_sq = (dx * dx + dy * dy) as f32;
+                            if dist_sq < nearest_dist_sq {
+                                nearest_dist_sq = dist_sq;
+                                target = Vec2::new(x as f32, y as f32);
+                            }
+                        }
+                    }
+                }
+                
+                // Move particle
+                let direction = target - particle.position_current;
+                let dist = direction.magnitude();
+                if dist > 0.01 {
+                    let move_dist = (density as f32 * 0.5).min(dist);
+                    particle.position_current += (direction / dist) * move_dist;
                 }
             }
-        });
-    }
-
-    fn apply_gravity(&mut self, particles: &mut Vec<VerletObject>) {
-        particles.par_iter_mut().for_each(|p| {
-            p.accelerate(self.gravity);
-        });
+        }
     }
 
     fn update_positions(&mut self, particles: &mut Vec<VerletObject>, dt: f32) {
@@ -140,13 +177,13 @@ impl Solver {
     fn apply_constraint(&mut self, particles: &mut Vec<VerletObject>) {
         let w = self.width as f32;
         let h = self.height as f32;
-        let restitution = 0.3;
+        let restitution = 0.5;
         let friction = 1.0; // 1.0 is perfect friction
 
         particles.par_iter_mut().for_each(|p| {
             let mut pos = p.position_current;
             let mut old = p.position_old;
-            let mut v = pos - old; // Verlet "velocity"
+            let mut v = pos - old; // "velocity"
 
             // X walls
             let mut hit_x = false;
@@ -229,34 +266,50 @@ impl Solver {
         &mut self,
         particles: &mut Vec<VerletObject>,
         density: u32,
-    ) -> HashMap<(i32, i32), Vec<i32>> {
-        let mut grid: HashMap<(i32, i32), Vec<i32>> = HashMap::new();
+        image: &DynamicImage,
+    ) -> HashMap<(i32, i32), Cell> {
+        let mut grid: HashMap<(i32, i32), Cell> = HashMap::new();
+        let rgb_image = image.to_rgb8();
+        let img_width = rgb_image.width() as i32;
+        let img_height = rgb_image.height() as i32;
 
         for i in 0..particles.len() {
-            let p = particles.get_mut(i).unwrap(); // There will always be a particle
+            let p = particles.get_mut(i).unwrap();
 
-            let x = (p.position_current.x / density as f32).floor() as i32;
-            let y = (p.position_current.y / density as f32).floor() as i32;
+            let grid_x = (p.position_current.x / density as f32).floor() as i32;
+            let grid_y = (p.position_current.y / density as f32).floor() as i32;
 
-            // Color based on grid
-            // p.col = (self.hash_cell(x+1, y+1) as u8, (self.hash_cell(x/2, y*2) + 100.0) as u8, self.hash_cell(y+1, x+1) as u8);
-
-            let arr = grid.get_mut(&(x, y));
+            let arr = grid.get_mut(&(grid_x, grid_y));
 
             match arr {
-                Some(v) => v.push(i as i32),
+                Some(v) => {
+                    v.items.push(i as i32);
+                },
                 None => {
                     let mut new_arr: Vec<i32> = Vec::new();
                     new_arr.push(i as i32);
-                    grid.insert((x, y), new_arr);
+
+                    // Convert particle position to image coordinates (not grid coordinates!)
+                    let pixel_x = p.position_current.x as i32;
+                    let pixel_y = p.position_current.y as i32;
+                    
+                    // Check bounds and get pixel color
+                    let is_white = if pixel_x >= 0 && pixel_x < img_width && pixel_y >= 0 && pixel_y < img_height {
+                        let pixel = rgb_image.get_pixel(pixel_x as u32, pixel_y as u32).0;
+                        pixel[0] >= 100 && pixel[1] >= 100 && pixel[2] >= 100
+                    } else {
+                        false // Out of bounds pixels are considered black
+                    };
+
+                    grid.insert((grid_x, grid_y), Cell::new(is_white, new_arr));
                 }
             }
         }
         grid
     }
 
-    fn find_colllisions(&mut self, particles: &mut Vec<VerletObject>, density: u32) {
-        let grid = self.compute_spatial_map(particles, density);
+    fn find_colllisions(&mut self, particles: &mut Vec<VerletObject>, density: u32, image: &DynamicImage) {
+        let grid = self.compute_spatial_map(particles, density, image);
 
         for (&(x, y), cell_particles) in &grid {
             for dx in (-1i32)..=1 {
@@ -265,8 +318,8 @@ impl Solver {
                         continue;
                     }
 
-                    let nx = x as i32 + dx;
-                    let ny = y as i32 + dy;
+                    let nx = x + dx;
+                    let ny = y + dy;
                     if nx >= 0 && ny >= 0 {
                         if let Some(neighbor_cell_particles) = grid.get(&(nx, ny)) {
                             self.check_cells_collisions(
@@ -284,33 +337,33 @@ impl Solver {
     fn check_cells_collisions(
         &mut self,
         particles: &mut Vec<VerletObject>,
-        cell_1: &Vec<i32>,
-        cell_2: &Vec<i32>,
+        cell_1: &Cell,
+        cell_2: &Cell,
     ) {
-        for p1 in cell_1 {
-            for p2 in cell_2 {
+        for &p1 in cell_1.items.iter(){
+            for &p2 in cell_2.items.iter() {
                 if p1 == p2 {
                     continue;
                 };
                 if p1 < p2 {
-                    let (a, b) = particles.split_at_mut(*p2 as usize);
-                    self.solve_cohesion(&mut a[*p1 as usize], &mut b[0]);
-                    self.solve_collision(&mut a[*p1 as usize], &mut b[0]);
+                    let (a, b) = particles.split_at_mut(p2 as usize);
+                    self.solve_cohesion(&mut a[p1 as usize], &mut b[0]);
+                    self.solve_collision(&mut a[p1 as usize], &mut b[0]);
                 } else {
-                    let (a, b) = particles.split_at_mut(*p1 as usize);
-                    self.solve_cohesion(&mut b[0], &mut a[*p2 as usize]);
-                    self.solve_collision(&mut b[0], &mut a[*p2 as usize]);
+                    let (a, b) = particles.split_at_mut(p1 as usize);
+                    self.solve_cohesion(&mut b[0], &mut a[p2 as usize]);
+                    self.solve_collision(&mut b[0], &mut a[p2 as usize]);
                 }
             }
         }
     }
 
-    pub fn update(&mut self, particles: &mut Vec<VerletObject>, dt: f32, density: u32) {
+    pub fn update(&mut self, particles: &mut Vec<VerletObject>, dt: f32, density: u32, image: &DynamicImage) {
         for _ in 0..self.substeps {
-            self.apply_gravity(particles);
             self.update_positions(particles, dt / (self.substeps as f32));
-            self.find_colllisions(particles, density);
+            self.find_colllisions(particles, density, image);
             self.apply_constraint(particles);
+            self.move_to_white_pixel(particles, density, image)
         }
     }
 }
