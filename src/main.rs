@@ -5,6 +5,7 @@ use cgmath::{InnerSpace, Vector2 as Vec2};
 use clap::Parser;
 use rand::Rng;
 use raylib::prelude::*;
+use rayon::prelude::*;
 
 use std::fs;
 use std::path::PathBuf;
@@ -81,6 +82,7 @@ fn main() {
         cohesion,
         repulsion,
     );
+
     solver.set_max_particles(total);
 
     let mut paths: Vec<PathBuf> = fs::read_dir(direcory)
@@ -90,23 +92,22 @@ fn main() {
 
     paths.sort();
 
-    let mut images: Vec<image::DynamicImage> = Vec::new();
+    let images: Vec<image::DynamicImage> = paths.
+        par_iter().
+        filter_map(|path| {
+            match image::open(path) {
+                Ok(img) => Some(img.resize_exact(
+                        solver.width as u32,
+                        solver.height as u32,
+                        image::imageops::Nearest,
+                    )),
+                Err(e) => {
+                    eprintln!("Failed to open {:?}: {e}", path);
+                    None
+                }
+            }
+        }).collect();
 
-    for path in paths {
-        match image::open(&path) {
-            Ok(img) => {
-                println!("{}", path.display());
-                images.push(img.resize_exact(
-                    solver.width as u32,
-                    solver.height as u32,
-                    image::imageops::FilterType::Nearest,
-                ));
-            }
-            Err(e) => {
-                eprintln!("Failed to open {:?}: {e}", path);
-            }
-        }
-    }
 
     for _ in 0..5 {
         let x_pos = rng.random_range(0..WIDTH) as f32;

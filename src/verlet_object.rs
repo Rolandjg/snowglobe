@@ -150,8 +150,8 @@ impl Solver {
         }
 
         if particles.is_empty() {
-            let pos_x = rng.random_range(0..800);
-            let pos_y = rng.random_range(0..800);
+            let pos_x = rng.random_range(0..self.width);
+            let pos_y = rng.random_range(0..self.height);
 
             let pos = Vec2::new(pos_x as f32, pos_y as f32);
             particles.push(VerletObject::new(pos, pos, Vec2::new(0.0, 0.0), particles[0].radius, (0, 0, 0, 0), false));
@@ -170,8 +170,8 @@ impl Solver {
             }
         } else {
             while particles.len() < x as usize {
-                let pos_x = rng.random_range(0..800);
-                let pos_y = rng.random_range(0..800);
+                let pos_x = rng.random_range(0..self.width);
+                let pos_y = rng.random_range(0..self.height);
 
                 let pos = Vec2::new(pos_x as f32, pos_y as f32);
                 particles.push(VerletObject::new(pos, pos, Vec2::new(0.0, 0.0), particles[0].radius, (0, 0, 0, 0), false));
