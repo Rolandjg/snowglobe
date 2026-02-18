@@ -13,6 +13,8 @@ pub struct VerletObject {
     pub radius: f32,
     pub col: (u8, u8, u8, u8),
     pub rigid: bool,
+    pub collide: Option<bool>,
+    pub draw: Option<bool>,
     pub target_position: Option<Vec2<f32>>,
 }
 
@@ -23,6 +25,8 @@ pub struct Solver {
     pub height: i32,
     pub substeps: i32,
     total: Option<i32>,
+    radius: Option<f32>,
+    invert: Option<bool>,
 }
 
 struct Cell {
@@ -67,6 +71,8 @@ impl VerletObject {
             radius,
             col,
             rigid,
+            collide: Some(true),
+            draw: Some(true),
             target_position: None,
         }
     }
@@ -106,7 +112,17 @@ impl Solver {
             cohesion_multiplier,
             repulsion_multiplier,
             total: None,
+            radius: None,
+            invert: None,
         }
+    }
+
+    pub fn set_radius(&mut self, radius: f32) {
+        self.radius = Some(radius);
+    }
+
+    pub fn set_invert(&mut self, invert: bool) {
+        self.invert = Some(invert);
     }
 
     pub fn set_max_particles(&mut self, max: i32) {
@@ -133,8 +149,21 @@ impl Solver {
         for y in 0..img_height {
             for x in 0..img_width {
                 let pixel = rgb_image.get_pixel(x as u32, y as u32).0;
-                if pixel[0] >= 100 && pixel[1] >= 100 && pixel[2] >= 100 {
-                    white_pixels.push((x, y));
+                match self.invert {
+                    Some(v) => {
+                        if v {
+                            if pixel[0] <= 100 && pixel[1] <= 100 && pixel[2] <= 100 {
+                                white_pixels.push((x, y));
+                            }
+                        } else if pixel[0] >= 100 && pixel[1] >= 100 && pixel[2] >= 100 {
+                                white_pixels.push((x, y));
+                        }
+                    }
+                    None => {
+                        if pixel[0] >= 100 && pixel[1] >= 100 && pixel[2] >= 100 {
+                            white_pixels.push((x, y));
+                        }
+                    }
                 }
             }
         }
@@ -144,6 +173,7 @@ impl Solver {
 
     fn manage_particles(&self, particles: &mut Vec<VerletObject>, white_count: i32) {
         let mut rng = rand::rng();
+        let max_to_alter = 1000;
 
         if white_count == 0 {
             return
@@ -154,27 +184,33 @@ impl Solver {
             let pos_y = rng.random_range(0..self.height);
 
             let pos = Vec2::new(pos_x as f32, pos_y as f32);
-            particles.push(VerletObject::new(pos, pos, Vec2::new(0.0, 0.0), particles[0].radius, (0, 0, 0, 0), false));
+            match self.radius {
+                Some(v) => particles.push(VerletObject::new(pos, pos, Vec2::new(0.0, 0.0), v, (0, 0, 0, 0), false)),
+                None => particles.push(VerletObject::new(pos, pos, Vec2::new(0.0, 0.0), 1.0, (0, 0, 0, 0), false)),
+            }
         }
 
         let x;
-        let growth_limiter = (particles[0].radius.exp2() * 10.0) as i32; 
+        let growth_limiter = (particles[0].radius.exp2() * 5.0) as i32; 
         match self.total {
             Some(v) => x = cmp::min((white_count) / growth_limiter, v),
             None => x = cmp::min((white_count) / growth_limiter, 1000)
         }
 
+        let mut altered = 0;
         if particles.len() > x as usize {
-            while particles.len() > x as usize {
+            while particles.len() > x as usize && altered < max_to_alter {
                 particles.pop();
+                altered += 1
             }
         } else {
-            while particles.len() < x as usize {
+            while particles.len() < x as usize && altered < max_to_alter {
                 let pos_x = rng.random_range(0..self.width);
                 let pos_y = rng.random_range(0..self.height);
 
                 let pos = Vec2::new(pos_x as f32, pos_y as f32);
                 particles.push(VerletObject::new(pos, pos, Vec2::new(0.0, 0.0), particles[0].radius, (0, 0, 0, 0), false));
+                altered += 1
             }
         }
         println!("{}", particles.len());
@@ -225,11 +261,33 @@ impl Solver {
                         }
                         
                         let pixel = rgb_image.get_pixel(x as u32, y as u32).0;
-                        if pixel[0] >= 100 && pixel[1] >= 100 && pixel[2] >= 100 {
-                            let dist_sq = (dx * dx + dy * dy) as f32;
-                            if dist_sq < nearest_dist_sq {
-                                nearest_dist_sq = dist_sq;
-                                target = Some(Vec2::new(x as f32, y as f32));
+
+                        match self.invert {
+                            Some(v) => {
+                                if v {
+                                    if pixel[0] <= 100 && pixel[1] <= 100 && pixel[2] <= 100 {
+                                        let dist_sq = (dx * dx + dy * dy) as f32;
+                                        if dist_sq < nearest_dist_sq {
+                                            nearest_dist_sq = dist_sq;
+                                            target = Some(Vec2::new(x as f32, y as f32));
+                                        }
+                                    }
+                                } else if pixel[0] >= 100 && pixel[1] >= 100 && pixel[2] >= 100 {
+                                    let dist_sq = (dx * dx + dy * dy) as f32;
+                                    if dist_sq < nearest_dist_sq {
+                                        nearest_dist_sq = dist_sq;
+                                        target = Some(Vec2::new(x as f32, y as f32));
+                                    }
+                                }
+                            }
+                            None => {
+                                if pixel[0] >= 100 && pixel[1] >= 100 && pixel[2] >= 100 {
+                                    let dist_sq = (dx * dx + dy * dy) as f32;
+                                    if dist_sq < nearest_dist_sq {
+                                        nearest_dist_sq = dist_sq;
+                                        target = Some(Vec2::new(x as f32, y as f32));
+                                    }
+                                }
                             }
                         }
                     }
@@ -350,10 +408,10 @@ impl Solver {
         if dist > a.radius + b.radius {
             let n: Vec2<f32> = axis / dist;
             let delta = a.radius + b.radius - dist;
-            if !a.rigid {
+            if !a.rigid && a.collide == Some(true) {
                 a.position_current += e * delta * n
             }
-            if !b.rigid {
+            if !b.rigid && b.collide == Some(true) {
                 b.position_current -= e * delta * n
             }
         }
@@ -389,12 +447,35 @@ impl Solver {
                     let pixel_x = p.position_current.x as i32;
                     let pixel_y = p.position_current.y as i32;
                     
-                    let is_white = if pixel_x >= 0 && pixel_x < img_width && pixel_y >= 0 && pixel_y < img_height {
-                        let pixel = rgb_image.get_pixel(pixel_x as u32, pixel_y as u32).0;
-                        pixel[0] >= 100 && pixel[1] >= 100 && pixel[2] >= 100
-                    } else {
-                        false
-                    };
+                    let mut is_white = false;
+                    match self.invert {
+                        Some(v) => {
+                            if v {
+                                is_white = if pixel_x >= 0 && pixel_x < img_width && pixel_y >= 0 && pixel_y < img_height {
+                                    let pixel = rgb_image.get_pixel(pixel_x as u32, pixel_y as u32).0;
+                                    pixel[0] <= 100 && pixel[1] <= 100 && pixel[2] <= 100
+                                } else {
+                                    false
+                                };
+                            } else {
+                                is_white = if pixel_x >= 0 && pixel_x < img_width && pixel_y >= 0 && pixel_y < img_height {
+                                    let pixel = rgb_image.get_pixel(pixel_x as u32, pixel_y as u32).0;
+                                    pixel[0] >= 100 && pixel[1] >= 100 && pixel[2] >= 100
+                                } else {
+                                    false
+                                };
+                            }
+                        }
+                        None => {
+                            is_white = if pixel_x >= 0 && pixel_x < img_width && pixel_y >= 0 && pixel_y < img_height {
+                                let pixel = rgb_image.get_pixel(pixel_x as u32, pixel_y as u32).0;
+                                pixel[0] >= 100 && pixel[1] >= 100 && pixel[2] >= 100
+                            } else {
+                                false
+                            };
+                        }
+
+                    }
 
                     grid.insert((grid_x, grid_y), Cell::new(is_white, new_arr));
                 }
@@ -435,7 +516,7 @@ impl Solver {
         cell_1: &Cell,
         cell_2: &Cell,
     ) {
-        for &p1 in cell_1.items.iter(){
+        for &p1 in cell_1.items.iter() {
             for &p2 in cell_2.items.iter() {
                 if p1 == p2 {
                     continue;

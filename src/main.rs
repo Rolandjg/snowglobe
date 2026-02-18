@@ -21,6 +21,10 @@ struct Args {
     #[arg(short, long, default_value_t = String::from("frames"))]
     directory: String,
 
+    /// Audio path
+    #[arg(short, long, default_value_t = String::from("audio.wav"))]
+    audio_name: String,
+
     /// Total (max) particles
     #[arg(short, long, default_value_t = 2000)]
     total: i32,
@@ -44,6 +48,10 @@ struct Args {
     /// Particle Size Variance
     #[arg(short, long, default_value_t = 0)]
     variance: i32,
+
+    /// Invert
+    #[arg(short, long, default_value_t = false)]
+    invert: bool,
 }
 
 const WIDTH: i32 = 800;
@@ -68,9 +76,11 @@ fn main() {
     let repulsion = args.repulsion;
     let size_variance = args.variance;
     let direcory = args.directory;
+    let audio_name = args.audio_name;
+    let invert = args.invert;
 
     let mut rng = rand::rng();
-    let mut frame_index = 0;
+    let mut frame_index: usize = 0; // Changed to usize for easier indexing
 
     let mut window_pos = unsafe { ffi::GetWindowPosition() };
 
@@ -84,6 +94,8 @@ fn main() {
     );
 
     solver.set_max_particles(total);
+    solver.set_invert(invert);
+    solver.set_radius(particle_size);
 
     let mut paths: Vec<PathBuf> = fs::read_dir(direcory)
         .unwrap()
@@ -128,7 +140,7 @@ fn main() {
     }
 
     rl.set_target_fps(30);
-    let music = audio.new_music("audio.wav").expect("Could not open music");
+    let music = audio.new_music(audio_name.as_str()).expect("Could not open music");
     music.play_stream();
 
     while !rl.window_should_close() {
@@ -151,7 +163,11 @@ fn main() {
         rl.set_trace_log(TraceLogLevel::LOG_NONE);
 
         if !images.is_empty() {
-            let image = &images[(frame_index as usize) % images.len()];
+            // NEW LOGIC: Calculate frame index based on audio time * 30 FPS
+            let time_played = music.get_time_played();
+            frame_index = (time_played * 30.0) as usize;
+
+            let image = &images[frame_index % images.len()];
             
             if playing {
                 solver.update(
@@ -160,14 +176,12 @@ fn main() {
                     (particle_size.powf(1.5) + 1.4) as u32,
                     image
                 );
-                
-                frame_index += 1; // Move to next frame
             }
 
             let mut d = rl.begin_drawing(&thread);
             d.clear_background(Color::BLACK);
 
-            for p in particles.iter() {
+            for p in particles.iter().filter(|p| p.draw == Some(true)) {
                 let col = p.col;
                 d.draw_circle(
                     p.position_current.x as i32,
@@ -176,6 +190,7 @@ fn main() {
                     Color::new(col.0, col.1, col.2, col.3),
                 );
             }
+            // d.draw_fps(0, 0);
         } else {
             eprintln!("No images found in ./frames directory!");
             break;
@@ -184,10 +199,12 @@ fn main() {
         unsafe {
             if raylib::ffi::IsKeyDown(KeyboardKey::KEY_P as i32) {
                 playing = true;
+                // Optional: music.resume();
             }
 
             if raylib::ffi::IsKeyDown(KeyboardKey::KEY_S as i32) {
                 playing = false;
+                // Optional: music.pause();
             }
         }
     }
